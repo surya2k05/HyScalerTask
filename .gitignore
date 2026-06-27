@@ -1,0 +1,13 @@
+node_modules/
+.env
+.DS_Store
+
+# Backend ignores
+backend/node_modules/
+backend/.env
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+
+# Frontend ignores
+frontend/node_modules/
+frontend/dist/
