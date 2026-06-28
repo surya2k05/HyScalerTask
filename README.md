@@ -8,7 +8,7 @@ TaskFlow is a premium, high-fidelity real-time collaborative task board applicat
 
 ### 1. Frontend
 *   **React (Vite):** Chosen for its rapid execution speed, lightweight bundle size, and native virtual DOM rendering. 
-*   **Vanilla CSS:** Built with a custom glassmorphism design system to create a premium, modern user interface without adding compilation latency or relying on external UI libraries.
+*   **Vanilla CSS:** Built with a custom glassmorphic design system to create a premium, modern user interface without adding compilation latency or relying on external UI libraries.
 *   **Socket.io-client:** Utilized for real-time WebSocket messaging and automated reconnection handshakes.
 
 ### 2. Backend
@@ -17,7 +17,8 @@ TaskFlow is a premium, high-fidelity real-time collaborative task board applicat
 
 ### 3. Database & ORM
 *   **Prisma ORM:** Provides type-safe queries, auto-generated migrations, and robust relationship handling.
-*   **SQLite:** Selected to make the repository **completely zero-configuration** for the evaluators. SQLite runs inside a self-contained local file (`dev.db`), meaning the project can be cloned and run instantly without spinning up PostgreSQL, MySQL, or MongoDB, while Prisma makes it simple to swap to a production database (like PostgreSQL) via a single line change in the environment config.
+*   **PostgreSQL:** Selected as the primary relational database to satisfy strict multi-user concurrency and transactional operations. 
+*   **Neon.tech (Cloud PostgreSQL):** Configured as the recommended serverless cloud hosting platform to ensure a credit-card-free, 10-second database setup experience.
 
 ---
 
@@ -32,10 +33,24 @@ npm run install:all
 ```
 *This command automatically runs `npm install` in the root, the `backend` folder, and the `frontend` folder.*
 
-### Step 2: Set Up the Database & Seed Mock Data
-Navigate to the `backend` directory (or use the root script) to push the Prisma schema and run the seed script:
+### Step 2: Configure Environment Variables
+1. Sign up/log in at [Neon.tech](https://neon.tech/) and create a free project.
+2. Copy your PostgreSQL connection string.
+3. Open `backend/.env` and paste it as the `DATABASE_URL`:
+   ```env
+   DATABASE_URL="postgresql://neondb_owner:password@ep-cool-wave-12345.us-east-2.aws.neon.tech/neondb?sslmode=require"
+   ```
+
+### Step 3: Run Database Migrations
+Deploy the tables directly into your PostgreSQL database:
 ```bash
-# Set up database file and run seed data
+# From the backend directory
+npx prisma migrate dev --name init
+```
+
+### Step 4: Seed Mock Data
+Populate the database with pre-configured team users and tasks:
+```bash
 npm run seed
 ```
 *The database is populated with three default users:*
@@ -43,7 +58,7 @@ npm run seed
 *   **Bob Johnson:** `bob@example.com` (Password: `Password123`) - *Project Member*
 *   **Charlie Brown:** `charlie@example.com` (Password: `Password123`) - *Project Member*
 
-### Step 3: Run the Application Concurrently
+### Step 5: Run the Application Concurrently
 In the root directory, start the Express server and Vite development environment in a single terminal:
 ```bash
 npm run dev
@@ -144,9 +159,8 @@ To ensure performance on large datasets, the **Backlog view** implements databas
 ---
 
 ## Known Limitations & Future Improvements
-1.  **SQLite Constraints:** SQLite is excellent for testing, but in production, we would transition to PostgreSQL using a driver pooling connection (Prisma makes this swap trivial).
-2.  **Websocket Scale:** For large-scale multi-server deployments, we would integrate a Redis Adapter into Socket.io to share room states across multiple backend nodes.
-3.  **Drag and Drop Animations:** While HTML5 Drag and Drop provides solid, reliable card moving mechanics, adding micro-spring animations (e.g. Framer Motion) would enhance the fluid feel.
+1.  **Websocket Scale:** For large-scale multi-server deployments, we would integrate a Redis Adapter into Socket.io to share room states across multiple backend nodes.
+2.  **Drag and Drop Animations:** While HTML5 Drag and Drop provides solid, reliable card moving mechanics, adding micro-spring animations (e.g. Framer Motion) would enhance the fluid feel.
 
 ---
 
