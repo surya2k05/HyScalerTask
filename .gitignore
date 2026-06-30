@@ -11,3 +11,9 @@ backend/prisma/dev.db-journal
 # Frontend ignores
 frontend/node_modules/
 frontend/dist/
+
+# Microsoft Word temporary/lock files
+~$*
+*.tmp
+*_files/
+

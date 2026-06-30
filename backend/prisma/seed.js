@@ -23,65 +23,65 @@ async function main() {
 
   // 3. Create users
   console.log('Creating users...');
-  const alice = await prisma.user.create({
+  const surya = await prisma.user.create({
     data: {
-      name: 'Alice Smith',
-      email: 'alice@example.com',
+      name: 'Suryakanta Priyadarshi',
+      email: 'surya@example.com',
       password: hashedPassword,
     },
   });
 
-  const bob = await prisma.user.create({
+  const rahul = await prisma.user.create({
     data: {
-      name: 'Bob Johnson',
-      email: 'bob@example.com',
+      name: 'Rahul Sharma',
+      email: 'rahul@example.com',
       password: hashedPassword,
     },
   });
 
-  const charlie = await prisma.user.create({
+  const amit = await prisma.user.create({
     data: {
-      name: 'Charlie Brown',
-      email: 'charlie@example.com',
+      name: 'Amit Patel',
+      email: 'amit@example.com',
       password: hashedPassword,
     },
   });
 
-  console.log(`Created users: ${alice.email}, ${bob.email}, ${charlie.email}`);
+  console.log(`Created users: ${surya.email}, ${rahul.email}, ${amit.email}`);
 
   // 4. Create Project
   console.log('Creating shared project...');
   const project = await prisma.project.create({
     data: {
-      name: 'Acme Website Replatform',
-      description: 'Migrating legacy client frontend and backend architectures to a modern stack.',
+      name: 'Build a Chat App',
+      description: 'Building a simple and user-friendly chat application with real-time messages.',
     },
   });
 
   // 5. Create Memberships
   console.log('Adding users to project...');
-  // Alice is Owner
+  // Surya is Owner
   await prisma.membership.create({
     data: {
-      userId: alice.id,
+      userId: surya.id,
       projectId: project.id,
       role: 'OWNER',
     },
   });
 
-  // Bob is Member
+  // Rahul is Member
   await prisma.membership.create({
     data: {
-      userId: bob.id,
+      userId: rahul.id,
       projectId: project.id,
       role: 'MEMBER',
     },
   });
 
-  // Charlie is Member
+  // Amit is Member
   await prisma.membership.create({
     data: {
-      userId: charlie.id,
+      userId: amit.id,
       projectId: project.id,
       role: 'MEMBER',
     },
@@ -89,71 +89,71 @@ async function main() {
 
   // 6. Create Tasks
   console.log('Creating tasks...');
-  // Task 1: Done, assigned to Alice
+  // Task 1: Done, assigned to Surya
   const task1 = await prisma.task.create({
     data: {
-      title: 'Design landing page wireframes',
-      description: 'Draft the layout for desktop and mobile screen resolutions.',
+      title: 'Design mockup for chat screen',
+      description: 'Draw some quick wireframes on Figma for how the chat window and message list should look.',
       status: 'DONE',
       priority: 'HIGH',
       dueDate: new Date(Date.now() - 24 * 60 * 60 * 1000), // yesterday
       completedDate: new Date(Date.now() - 12 * 60 * 60 * 1000), // 12 hours ago
       projectId: project.id,
-      assigneeId: alice.id,
-      creatorId: alice.id,
+      assigneeId: surya.id,
+      creatorId: surya.id,
     },
   });
 
-  // Task 2: In Progress, assigned to Bob
+  // Task 2: In Progress, assigned to Rahul
   const task2 = await prisma.task.create({
     data: {
-      title: 'Setup database schema and migrations',
-      description: 'Initialize Prisma ORM models and verify SQLite database files locally.',
+      title: 'Setup database for users and chats',
+      description: 'Create database tables for user info and save chat messages.',
       status: 'IN_PROGRESS',
       priority: 'MEDIUM',
       dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000), // 3 days from now
       projectId: project.id,
-      assigneeId: bob.id,
-      creatorId: alice.id,
+      assigneeId: rahul.id,
+      creatorId: surya.id,
     },
   });
 
-  // Task 3: Todo, assigned to Bob
+  // Task 3: Todo, assigned to Rahul
   const task3 = await prisma.task.create({
     data: {
-      title: 'Implement JWT refresh token rotation',
-      description: 'Write auth endpoints to handle short-lived access tokens and token rotating refresh endpoints.',
+      title: 'Build backend api for sending messages',
+      description: 'Write the express backend routes to send and fetch messages.',
       status: 'TODO',
       priority: 'HIGH',
       dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000), // 5 days from now
       projectId: project.id,
-      assigneeId: bob.id,
-      creatorId: alice.id,
+      assigneeId: rahul.id,
+      creatorId: surya.id,
     },
   });
 
-  // Task 4: Todo, assigned to Charlie
+  // Task 4: Todo, assigned to Amit
   const task4 = await prisma.task.create({
     data: {
-      title: 'Write frontend integration tests',
-      description: 'Set up testing library to mock HTTP calls and simulate user routing flows.',
+      title: 'Integrate socket.io for real-time messaging',
+      description: 'Configure socket connections so messages show up instantly without page refresh.',
       status: 'TODO',
       priority: 'LOW',
       projectId: project.id,
-      assigneeId: charlie.id,
-      creatorId: bob.id,
+      assigneeId: amit.id,
+      creatorId: rahul.id,
     },
   });
 
   // Task 5: Todo, unassigned
   const task5 = await prisma.task.create({
     data: {
-      title: 'Deploy application to server',
-      description: 'Set up Docker configuration for deployment pipelines.',
+      title: 'Write unit tests for authentication',
+      description: 'Write simple tests for sign up and login code.',
       status: 'TODO',
       priority: 'HIGH',
       projectId: project.id,
-      creatorId: alice.id,
+      creatorId: surya.id,
     },
   });
 
@@ -161,17 +161,17 @@ async function main() {
   console.log('Adding task comments...');
   await prisma.comment.create({
     data: {
-      content: "I've initialized the Prisma models. Bob, please verify the migrations.",
+      content: "I drew the basic designs. Rahul, check if you like it.",
       taskId: task2.id,
-      userId: alice.id,
+      userId: surya.id,
     },
   });
 
   await prisma.comment.create({
     data: {
-      content: 'Understood. I ran the migration command and it generated successfully. I am starting to write the database exporter module now.',
+      content: 'Yes, the design looks clean! I will start setting up the database tables now.',
       taskId: task2.id,
-      userId: bob.id,
+      userId: rahul.id,
     },
   });
 
@@ -180,57 +180,57 @@ async function main() {
   const logs = [
     {
       projectId: project.id,
-      userId: alice.id,
+      userId: surya.id,
       action: 'CREATED_TASK',
-      details: 'Created project Acme Website Replatform',
+      details: 'Created project Build a Chat App',
     },
     {
       projectId: project.id,
-      userId: alice.id,
+      userId: surya.id,
       action: 'INVITED_MEMBER',
-      details: 'Invited Bob Johnson (bob@example.com) to the project',
+      details: 'Invited Rahul Sharma (rahul@example.com) to the project',
     },
     {
       projectId: project.id,
-      userId: alice.id,
+      userId: surya.id,
       action: 'INVITED_MEMBER',
-      details: 'Invited Charlie Brown (charlie@example.com) to the project',
+      details: 'Invited Amit Patel (amit@example.com) to the project',
     },
     {
       projectId: project.id,
-      userId: alice.id,
+      userId: surya.id,
       action: 'CREATED_TASK',
-      details: 'Created task "Design landing page wireframes"',
+      details: 'Created task "Design mockup for chat screen"',
     },
     {
       projectId: project.id,
-      userId: alice.id,
+      userId: surya.id,
       action: 'ASSIGNED_TASK',
-      details: 'Assigned task "Design landing page wireframes" to Alice Smith',
+      details: 'Assigned task "Design mockup for chat screen" to Suryakanta Priyadarshi',
     },
     {
       projectId: project.id,
-      userId: alice.id,
+      userId: surya.id,
       action: 'CREATED_TASK',
-      details: 'Created task "Setup database schema and migrations"',
+      details: 'Created task "Setup database for users and chats"',
     },
     {
       projectId: project.id,
-      userId: alice.id,
+      userId: surya.id,
       action: 'ASSIGNED_TASK',
-      details: 'Assigned task "Setup database schema and migrations" to Bob Johnson',
+      details: 'Assigned task "Setup database for users and chats" to Rahul Sharma',
     },
     {
       projectId: project.id,
-      userId: alice.id,
+      userId: surya.id,
       action: 'ADDED_COMMENT',
-      details: 'Commented on task "Setup database schema and migrations": "I\'ve initialized..."',
+      details: 'Commented on task "Setup database for users and chats": "I drew..."',
     },
     {
       projectId: project.id,
-      userId: bob.id,
+      userId: rahul.id,
       action: 'ADDED_COMMENT',
-      details: 'Commented on task "Setup database schema and migrations": "Understood. I ran..."',
+      details: 'Commented on task "Setup database for users and chats": "Yes, the design..."',
     },
   ];
 

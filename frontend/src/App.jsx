@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import logoImg from './logo.png';
 import { io } from 'socket.io-client';
 import {
   CheckCircle,
@@ -14,6 +15,7 @@ import {
   LogOut,
   ChevronDown,
   ChevronUp,
+  ChevronRight,
   Loader,
   AlertCircle,
   Calendar,
@@ -25,7 +27,9 @@ import {
   Folder,
   CheckSquare,
   Award,
-  Users
+  Users,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import {
   apiRequest,
@@ -36,18 +40,35 @@ import {
 } from './api';
 
 export default function App() {
+  const [initializing, setInitializing] = useState(true);
+
   // Auth State
-  const [user, setUser] = useState(null);
-  const [accessToken, setAccessTokenState] = useState(null);
+  const [user, setUser] = useState(() => {
+    const saved = localStorage.getItem('taskflow_user');
+    try {
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [accessToken, setAccessTokenState] = useState(() => {
+    return localStorage.getItem('taskflow_token') || null;
+  });
   const [authView, setAuthView] = useState('login'); // login, signup
+  const [showAuth, setShowAuth] = useState(false); // Toggle landing overview / auth login-signup
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
   const [authErrors, setAuthErrors] = useState({});
   const [authLoading, setAuthLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   // App Navigation View
-  const [view, setView] = useState('dashboard'); // dashboard, board
+  const [view, setView] = useState(() => {
+    return localStorage.getItem('taskflow_view') || 'dashboard';
+  });
   const [projects, setProjects] = useState([]);
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [selectedProjectId, setSelectedProjectId] = useState(() => {
+    return localStorage.getItem('taskflow_project_id') || null;
+  });
   const [selectedProject, setSelectedProject] = useState(null);
 
   // Task Board State
@@ -87,6 +108,7 @@ export default function App() {
   const [projectFormErrors, setProjectFormErrors] = useState({});
   const [inviteForm, setInviteForm] = useState({ email: '' });
   const [inviteFormErrors, setInviteFormErrors] = useState({});
+  const [generatedInviteUrl, setGeneratedInviteUrl] = useState(null);
   const [taskForm, setTaskForm] = useState({
     title: '',
     description: '',
@@ -106,6 +128,7 @@ export default function App() {
 
   // Toast Notifications State
   const [toasts, setToasts] = useState([]);
+  const [activeFaqIndex, setActiveFaqIndex] = useState(null);
 
   // Drag and drop visual indicator state
   const [dragOverColumn, setDragOverColumn] = useState(null);
@@ -128,6 +151,20 @@ export default function App() {
   // Global Session Expiry & Auto Login
   // ----------------------------------------------------
   useEffect(() => {
+    // Parse invite query parameters
+    const params = new URLSearchParams(window.location.search);
+    const emailParam = params.get('email');
+    const inviteParam = params.get('invite');
+    if (emailParam || inviteParam) {
+      setAuthForm((prev) => ({ ...prev, email: emailParam || '' }));
+      setAuthView('signup');
+      setShowAuth(true);
+      
+      // Clean up URL parameters to keep address bar clean
+      const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+      window.history.pushState({ path: newUrl }, '', newUrl);
+    }
+
     // Listen for custom token refresh updates from API client
     registerOnTokenRefreshed(({ accessToken }) => {
       setAccessTokenState(accessToken);
@@ -175,6 +212,7 @@ export default function App() {
           console.error('Auto login check failed', e);
         }
       }
+      setInitializing(false);
     };
 
     attemptAutoLogin();
@@ -424,13 +462,48 @@ export default function App() {
     }
   }, [selectedProjectId, projectTab, backlogPage, backlogSort, backlogFilters]);
 
-  // Load basic dashboard states
+  // Sync state to localStorage for page refresh persistence
   useEffect(() => {
-    if (accessToken && view === 'dashboard') {
-      fetchProjects();
-      fetchDashboardStats();
+    if (user) {
+      localStorage.setItem('taskflow_user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('taskflow_user');
     }
-  }, [accessToken, view]);
+  }, [user]);
+
+  useEffect(() => {
+    if (accessToken) {
+      localStorage.setItem('taskflow_token', accessToken);
+      setAccessToken(accessToken);
+    } else {
+      localStorage.removeItem('taskflow_token');
+      setAccessToken(null);
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    localStorage.setItem('taskflow_view', view);
+  }, [view]);
+
+  useEffect(() => {
+    if (selectedProjectId) {
+      localStorage.setItem('taskflow_project_id', selectedProjectId);
+    } else {
+      localStorage.removeItem('taskflow_project_id');
+    }
+  }, [selectedProjectId]);
+
+  // Load basic states on auth & view changes
+  useEffect(() => {
+    if (accessToken) {
+      fetchProjects();
+      if (view === 'dashboard') {
+        fetchDashboardStats();
+      } else if (view === 'board' && selectedProjectId) {
+        fetchProjectDetails(selectedProjectId);
+      }
+    }
+  }, [accessToken, view, selectedProjectId]);
 
   // ----------------------------------------------------
   // Auth Form Handlers
@@ -597,10 +670,15 @@ export default function App() {
       });
       const data = await res.json();
       if (res.ok) {
-        showToast('success', `User successfully added to project.`);
-        setInviteForm({ email: '' });
-        setModals((m) => ({ ...m, inviteMember: false }));
-        fetchProjectDetails(selectedProjectId);
+        if (data.isNewUser) {
+          showToast('success', 'Invitation link generated successfully.');
+          setGeneratedInviteUrl(data.inviteUrl);
+        } else {
+          showToast('success', `User successfully added to project.`);
+          setInviteForm({ email: '' });
+          setModals((m) => ({ ...m, inviteMember: false }));
+          fetchProjectDetails(selectedProjectId);
+        }
       } else {
         setInviteFormErrors({ email: data.error || 'Failed to add user.' });
       }
@@ -669,6 +747,8 @@ export default function App() {
           assigneeId: ''
         });
         setModals((m) => ({ ...m, createTask: false }));
+        // Reset board filters so the new task is immediately visible
+        setBoardFilters({ search: '', priority: '', assigneeId: '' });
         // Sockets automatically insert the task, but let's fetch backlog if tab active
         if (projectTab === 'backlog') {
           fetchBacklogTasks();
@@ -697,18 +777,31 @@ export default function App() {
       }
     }
 
+    const previousStatus = task.status;
+
+    // Optimistic UI update: instantly update local task state
+    setTasks((prevTasks) =>
+      prevTasks.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
+    );
+
     try {
       const res = await apiRequest(`/projects/${selectedProjectId}/tasks/${taskId}`, {
         method: 'PUT',
         body: JSON.stringify({ status: newStatus }),
       });
       const data = await res.json();
-      if (res.ok) {
-        // updated via WebSockets
-      } else {
+      if (!res.ok) {
+        // Rollback state if backend rejects the update
+        setTasks((prevTasks) =>
+          prevTasks.map((t) => (t.id === taskId ? { ...t, status: previousStatus } : t))
+        );
         showToast('warning', data.error || 'Failed to update task.');
       }
     } catch (err) {
+      // Rollback state if request fails
+      setTasks((prevTasks) =>
+        prevTasks.map((t) => (t.id === taskId ? { ...t, status: previousStatus } : t))
+      );
       showToast('warning', 'Connection error updating status.');
     }
   };
@@ -831,14 +924,23 @@ export default function App() {
   // Filtering & Helper logic
   // ----------------------------------------------------
   const getFilteredTasks = () => {
+    const isOwner = selectedProject?.role === 'OWNER';
     return tasks.filter((task) => {
       const matchesSearch = task.title.toLowerCase().includes(boardFilters.search.toLowerCase());
       const matchesPriority = boardFilters.priority ? task.priority === boardFilters.priority : true;
-      const matchesAssignee = boardFilters.assigneeId
-        ? boardFilters.assigneeId === 'unassigned'
-          ? !task.assigneeId
-          : task.assigneeId === boardFilters.assigneeId
-        : true;
+      
+      let matchesAssignee = true;
+      if (isOwner) {
+        matchesAssignee = boardFilters.assigneeId
+          ? boardFilters.assigneeId === 'unassigned'
+            ? !task.assigneeId
+            : task.assigneeId === boardFilters.assigneeId
+          : true;
+      } else {
+        // Members only see tasks assigned to them or unassigned tasks
+        matchesAssignee = task.assigneeId === user?.id || !task.assigneeId;
+      }
+      
       return matchesSearch && matchesPriority && matchesAssignee;
     });
   };
@@ -861,9 +963,199 @@ export default function App() {
   // ----------------------------------------------------
   // Render Components
   // ----------------------------------------------------
-  if (!accessToken) {
+  if (initializing) {
     return (
-      <div className="app-container">
+      <div className="app-container" style={{ minHeight: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div className="spinner-wrapper">
+          <div className="spinner"></div>
+          <div style={{ marginTop: '1rem', color: 'var(--text-muted)' }}>Loading TaskFlow...</div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!accessToken) {
+    if (!showAuth) {
+      return (
+        <div className="app-container" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          {/* Toast Overlay */}
+          <div className="toast-container">
+            {toasts.map((t) => (
+              <div key={t.id} className={`toast ${t.type}`}>
+                {t.type === 'success' && <CheckCircle size={18} />}
+                {t.type === 'warning' && <AlertCircle size={18} />}
+                {t.type === 'info' && <Activity size={18} />}
+                <span>{t.text}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Navigation Bar */}
+          <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '1.25rem 2.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', background: 'rgba(10, 15, 30, 0.5)', backdropFilter: 'blur(12px)', position: 'sticky', top: 0, zIndex: 100 }}>
+            <div className="app-title-group" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <div className="app-logo" style={{ background: 'none', boxShadow: 'none' }}>
+                <img src={logoImg} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+              </div>
+              <h1 className="app-title" style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>TaskFlow</h1>
+            </div>
+            <button 
+              className="btn btn-primary" 
+              onClick={() => { setShowAuth(true); setAuthView('login'); }}
+              style={{ padding: '0.5rem 1.5rem', margin: 0 }}
+            >
+              Sign In
+            </button>
+          </header>
+
+          {/* Hero Section */}
+          <section style={{ padding: '6.5rem 1.5rem 4.5rem 1.5rem', maxWidth: '900px', margin: '0 auto', textAlign: 'center' }}>
+            <h1 style={{ fontSize: '3.6rem', fontWeight: 900, marginBottom: '1.5rem', lineHeight: '1.2', background: 'linear-gradient(135deg, #ffffff 0%, #a5b4fc 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.025em' }}>
+              Streamline Your Workflow <br />
+              <span style={{ color: 'var(--color-brand)' }}>with TaskFlow</span>
+            </h1>
+            <p style={{ fontSize: '1.25rem', color: 'var(--text-secondary)', marginBottom: '2.5rem', maxWidth: '650px', margin: '0 auto 2.5rem auto', lineHeight: '1.6' }}>
+              Empower your team with our intuitive project management solution. Real-time updates, sprint boards, and permission layers built for developers.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem' }}>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => { setShowAuth(true); setAuthView('signup'); }}
+                style={{ padding: '0.8rem 2rem', borderRadius: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                Get Started <ChevronRight size={18} />
+              </button>
+              <a 
+                href="#features" 
+                className="btn btn-secondary"
+                style={{ padding: '0.8rem 2rem', borderRadius: '6px', fontWeight: 600, display: 'flex', alignItems: 'center', textDecoration: 'none' }}
+              >
+                Learn More
+              </a>
+            </div>
+          </section>
+
+          {/* Features Section */}
+          <section id="features" style={{ padding: '5rem 1.5rem', background: 'rgba(255, 255, 255, 0.02)', borderTop: '1px solid rgba(255, 255, 255, 0.04)', borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
+            <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
+              <h3 style={{ fontSize: '2.2rem', fontWeight: 800, marginBottom: '3rem', textAlign: 'center', background: 'linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                Key Features
+              </h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2rem' }}>
+                <div className="glass-panel" style={{ padding: '2.25rem 2rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '1.25rem' }}>📋</div>
+                  <h4 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '0.75rem' }}>
+                    Intuitive Kanban Boards
+                  </h4>
+                  <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                    Visualize your workflow and optimize team productivity with our easy-to-use, drag-and-drop Kanban boards.
+                  </p>
+                </div>
+
+                <div className="glass-panel" style={{ padding: '2.25rem 2rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '1.25rem' }}>⚡</div>
+                  <h4 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '0.75rem' }}>
+                    Powerful Sprint Planning
+                  </h4>
+                  <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                    Plan and manage sprints effectively, keeping your team focused on delivering value without local DB limitations.
+                  </p>
+                </div>
+
+                <div className="glass-panel" style={{ padding: '2.25rem 2rem', borderRadius: '12px', border: '1px solid rgba(255, 255, 255, 0.08)' }}>
+                  <div style={{ fontSize: '2.5rem', marginBottom: '1.25rem' }}>📈</div>
+                  <h4 style={{ fontSize: '1.25rem', fontWeight: 700, color: '#ffffff', marginBottom: '0.75rem' }}>
+                    Comprehensive Reporting
+                  </h4>
+                  <p style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', lineHeight: '1.6' }}>
+                    Gain real-time insights into your team's action logs, status updates, and comments to audit project timelines.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* FAQ Section */}
+          <section style={{ padding: '5rem 1.5rem', maxWidth: '850px', width: '100%', margin: '0 auto' }}>
+            <h3 style={{ fontSize: '2.2rem', fontWeight: 800, marginBottom: '3rem', textAlign: 'center', background: 'linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+              Frequently Asked Questions
+            </h3>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {[
+                {
+                  question: "What is TaskFlow?",
+                  answer: "TaskFlow is a collaborative project management tool designed to help teams organize, track, and manage their projects in real-time. It combines interactive Kanban boards with secure permissions."
+                },
+                {
+                  question: "How does TaskFlow compare to other tools?",
+                  answer: "TaskFlow offers a unique combination of intuitive design, role-scoped security permissions, and direct real-time room communication using WebSockets (Socket.io). It works great without lag."
+                },
+                {
+                  question: "Is TaskFlow suitable for small teams?",
+                  answer: "Absolutely! TaskFlow is designed to be highly scalable. Anyone can sign up, create a project, and invite team members. It is versatile for various team structures and project types."
+                },
+                {
+                  question: "Can TaskFlow handle multiple projects simultaneously?",
+                  answer: "Yes, TaskFlow is built to manage multiple projects concurrently. As a member or owner, you can easily switch between projects on your dashboard and view active boards immediately."
+                }
+              ].map((faq, idx) => {
+                const isOpen = activeFaqIndex === idx;
+                return (
+                  <div 
+                    key={idx} 
+                    className="glass-panel" 
+                    style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid rgba(255, 255, 255, 0.06)' }}
+                  >
+                    <button
+                      onClick={() => setActiveFaqIndex(isOpen ? null : idx)}
+                      style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', background: 'none', border: 'none', color: '#ffffff', fontSize: '1.05rem', fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}
+                    >
+                      <span>{faq.question}</span>
+                      <span style={{ transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease', fontSize: '1.2rem' }}>
+                        ▼
+                      </span>
+                    </button>
+                    {isOpen && (
+                      <div style={{ padding: '0 1.5rem 1.25rem 1.5rem', color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.6', borderTop: '1px solid rgba(255, 255, 255, 0.04)', paddingTop: '1rem' }}>
+                        {faq.answer}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          {/* CTA Section */}
+          <section style={{ padding: '6rem 1.5rem', textAlign: 'center', background: 'rgba(99, 102, 241, 0.05)', borderTop: '1px solid rgba(99, 102, 241, 0.1)', marginBottom: 0 }}>
+            <div style={{ maxWidth: '650px', margin: '0 auto' }}>
+              <h3 style={{ fontSize: '2.2rem', fontWeight: 800, color: '#ffffff', marginBottom: '1rem' }}>
+                Ready to Transform Your Workflow?
+              </h3>
+              <p style={{ fontSize: '1.1rem', color: 'var(--text-secondary)', marginBottom: '2.5rem', lineHeight: '1.6' }}>
+                Join thousands of teams already using TaskFlow to streamline their projects and boost productivity.
+              </p>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => { setShowAuth(true); setAuthView('signup'); }}
+                style={{ fontSize: '1.1rem', padding: '0.8rem 2.5rem', borderRadius: '6px', fontWeight: 600 }}
+              >
+                Start For Free
+              </button>
+            </div>
+          </section>
+
+          {/* Footer Section */}
+          <footer style={{ padding: '2.5rem 1.5rem', textAlign: 'center', borderTop: '1px solid rgba(255, 255, 255, 0.08)', background: 'rgba(10, 15, 30, 0.3)', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            <p style={{ margin: 0, opacity: 0.8 }}>Built with ❤️ by Suryakanta for HyScaler</p>
+          </footer>
+        </div>
+      );
+    }
+
+    return (
+      <div className="app-container" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
         {/* Toast Overlay */}
         <div className="toast-container">
           {toasts.map((t) => (
@@ -876,11 +1168,20 @@ export default function App() {
           ))}
         </div>
 
-        <header className="app-header">
-          <div className="app-title-group">
-            <div className="app-logo">TF</div>
-            <h1 className="app-title">TaskFlow</h1>
+        <header className="app-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', padding: '1.25rem 2.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', background: 'rgba(255, 255, 255, 0.01)', backdropFilter: 'blur(10px)' }}>
+          <div className="app-title-group" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.6rem' }} onClick={() => setShowAuth(false)}>
+            <div className="app-logo" style={{ background: 'none', boxShadow: 'none' }}>
+              <img src={logoImg} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            </div>
+            <h1 className="app-title" style={{ fontSize: '1.5rem', fontWeight: 'bold', margin: 0 }}>TaskFlow</h1>
           </div>
+          <button 
+            className="btn btn-secondary" 
+            onClick={() => setShowAuth(false)}
+            style={{ padding: '0.5rem 1.25rem', margin: 0 }}
+          >
+            ← Back to Overview
+          </button>
         </header>
 
         <main className="auth-wrapper">
@@ -941,14 +1242,35 @@ export default function App() {
                 <label className="form-label" htmlFor="password">
                   Password
                 </label>
-                <input
-                  type="password"
-                  id="password"
-                  className="form-control"
-                  placeholder="••••••••"
-                  value={authForm.password}
-                  onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                />
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    id="password"
+                    className="form-control"
+                    placeholder="••••••••"
+                    style={{ paddingRight: '2.5rem', width: '100%' }}
+                    value={authForm.password}
+                    onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: 'absolute',
+                      right: '0.75rem',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--text-secondary)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      padding: 0,
+                      zIndex: 10
+                    }}
+                  >
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
                 {authErrors.password && (
                   <div className="invalid-feedback">
                     <AlertCircle size={14} /> {authErrors.password}
@@ -983,6 +1305,7 @@ export default function App() {
                     onClick={() => {
                       setAuthView('signup');
                       setAuthErrors({});
+                      setShowPassword(false);
                     }}
                     style={{ background: 'none', border: 'none', color: 'var(--color-brand)', fontWeight: 600, cursor: 'pointer' }}
                   >
@@ -996,6 +1319,7 @@ export default function App() {
                     onClick={() => {
                       setAuthView('login');
                       setAuthErrors({});
+                      setShowPassword(false);
                     }}
                     style={{ background: 'none', border: 'none', color: 'var(--color-brand)', fontWeight: 600, cursor: 'pointer' }}
                   >
@@ -1027,7 +1351,9 @@ export default function App() {
       {/* Main Header */}
       <header className="app-header">
         <div className="app-title-group" style={{ cursor: 'pointer' }} onClick={() => setView('dashboard')}>
-          <div className="app-logo">TF</div>
+          <div className="app-logo" style={{ background: 'none', boxShadow: 'none' }}>
+            <img src={logoImg} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          </div>
           <h1 className="app-title">TaskFlow</h1>
           <span style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem', color: isSocketConnected ? 'var(--status-done)' : 'var(--priority-high)', marginLeft: '1rem', background: 'rgba(255,255,255,0.03)', padding: '0.2rem 0.6rem', borderRadius: '50px', border: '1px solid var(--border-glass)' }}>
             {isSocketConnected ? <Wifi size={12} /> : <WifiOff size={12} />}
@@ -1216,23 +1542,10 @@ export default function App() {
 
                   {/* Right Column: Global feeds & analytics */}
                   <div>
-                    {dashboardStats?.projectWithMostOpenTasks && (
-                      <div className="glass-panel" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', borderLeft: '4px solid var(--priority-medium)' }}>
-                        <Award size={28} style={{ color: 'var(--priority-medium)' }} />
-                        <div>
-                          <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Project to Watch</h4>
-                          <p style={{ fontSize: '1rem', fontWeight: 600 }}>{dashboardStats.projectWithMostOpenTasks.name}</p>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                            <strong>{dashboardStats.projectWithMostOpenTasks.openTasksCount}</strong> open tasks
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
                     <div className="glass-panel" style={{ padding: '1.5rem' }}>
                       <div className="dashboard-section-header" style={{ marginBottom: '1rem' }}>
                         <h3 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.1rem' }}>
-                          <Activity size={18} /> Global Activity Feed
+                          <Activity size={18} /> Activity Feed
                         </h3>
                       </div>
                       <div style={{ maxHeight: '420px', overflowY: 'auto' }}>
@@ -1303,23 +1616,14 @@ export default function App() {
                 className={`tab-btn ${projectTab === 'board' ? 'active' : ''}`}
                 onClick={() => setProjectTab('board')}
               >
-                Kanban Board
+                Board
               </button>
-              <button
-                className={`tab-btn ${projectTab === 'backlog' ? 'active' : ''}`}
-                onClick={() => {
-                  setProjectTab('backlog');
-                  setBacklogPage(1);
-                  fetchBacklogTasks();
-                }}
-              >
-                Backlog (List View)
-              </button>
+
               <button
                 className={`tab-btn ${projectTab === 'activity' ? 'active' : ''}`}
                 onClick={() => setProjectTab('activity')}
               >
-                Project Log Feed
+                Project Logs
               </button>
               <button
                 className={`tab-btn ${projectTab === 'members' ? 'active' : ''}`}
@@ -1365,7 +1669,7 @@ export default function App() {
                     <option value="unassigned">Unassigned Only</option>
                     {selectedProject.members.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.name}
+                        {m.name} ({m.role === 'OWNER' ? 'Owner' : 'Member'})
                       </option>
                     ))}
                   </select>
@@ -1421,7 +1725,7 @@ export default function App() {
                               <p className="task-card-desc">{task.description}</p>
                               <div className="task-card-footer">
                                 <div className="task-card-date">
-                                  <Calendar size={12} />
+                                  <Calendar size={12} style={{ color: '#ffffff' }} />
                                   <span>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}</span>
                                 </div>
                                 <div className="task-card-assignee">
@@ -1479,7 +1783,7 @@ export default function App() {
                               <p className="task-card-desc">{task.description}</p>
                               <div className="task-card-footer">
                                 <div className="task-card-date">
-                                  <Calendar size={12} />
+                                  <Calendar size={12} style={{ color: '#ffffff' }} />
                                   <span>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}</span>
                                 </div>
                                 <div className="task-card-assignee">
@@ -1559,146 +1863,7 @@ export default function App() {
               </div>
             )}
 
-            {/* TAB CONTENT: SERVER-SIDE BACKLOG LIST */}
-            {projectTab === 'backlog' && (
-              <div className="backlog-view">
-                {/* Backlog filter row */}
-                <div className="filter-bar glass-panel">
-                  <div className="search-input-wrapper">
-                    <Search size={16} className="search-icon" />
-                    <input
-                      type="text"
-                      className="form-control"
-                      placeholder="Search title..."
-                      value={backlogFilters.search}
-                      onChange={(e) => {
-                        setBacklogFilters({ ...backlogFilters, search: e.target.value });
-                        setBacklogPage(1);
-                      }}
-                    />
-                  </div>
 
-                  <select
-                    className="form-control filter-select"
-                    value={backlogFilters.priority}
-                    onChange={(e) => {
-                      setBacklogFilters({ ...backlogFilters, priority: e.target.value });
-                      setBacklogPage(1);
-                    }}
-                  >
-                    <option value="">All Priorities</option>
-                    <option value="LOW">Low</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HIGH">High</option>
-                  </select>
-
-                  <select
-                    className="form-control filter-select"
-                    value={backlogFilters.assigneeId}
-                    onChange={(e) => {
-                      setBacklogFilters({ ...backlogFilters, assigneeId: e.target.value });
-                      setBacklogPage(1);
-                    }}
-                  >
-                    <option value="">All Assignees</option>
-                    <option value="unassigned">Unassigned</option>
-                    {selectedProject.members.map((m) => (
-                      <option key={m.id} value={m.id}>
-                        {m.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {backlogLoading ? (
-                  <div className="spinner-wrapper">
-                    <div className="spinner"></div>
-                  </div>
-                ) : (
-                  <div className="glass-panel" style={{ overflow: 'hidden' }}>
-                    <table className="backlog-table">
-                      <thead>
-                        <tr>
-                          <th onClick={() => toggleBacklogSort('title')}>
-                            Title <ArrowUpDown size={14} style={{ display: 'inline', marginLeft: '4px' }} />
-                          </th>
-                          <th onClick={() => toggleBacklogSort('status')}>
-                            Status <ArrowUpDown size={14} style={{ display: 'inline', marginLeft: '4px' }} />
-                          </th>
-                          <th onClick={() => toggleBacklogSort('priority')}>
-                            Priority <ArrowUpDown size={14} style={{ display: 'inline', marginLeft: '4px' }} />
-                          </th>
-                          <th onClick={() => toggleBacklogSort('dueDate')}>
-                            Due Date <ArrowUpDown size={14} style={{ display: 'inline', marginLeft: '4px' }} />
-                          </th>
-                          <th onClick={() => toggleBacklogSort('createdAt')}>
-                            Created At <ArrowUpDown size={14} style={{ display: 'inline', marginLeft: '4px' }} />
-                          </th>
-                          <th>Assignee</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {backlogTasks.length === 0 ? (
-                          <tr>
-                            <td colSpan="6" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-                              No tasks match filters in backlog.
-                            </td>
-                          </tr>
-                        ) : (
-                          backlogTasks.map((task) => (
-                            <tr key={task.id} style={{ cursor: 'pointer' }} onClick={() => openTaskModal(task)}>
-                              <td><strong>{task.title}</strong></td>
-                              <td>
-                                <span style={{ fontSize: '0.8rem', padding: '0.15rem 0.5rem', borderRadius: '50px', fontWeight: 600, background: task.status === 'DONE' ? 'var(--status-done-bg)' : task.status === 'IN_PROGRESS' ? 'var(--status-progress-bg)' : 'var(--status-todo-bg)', color: task.status === 'DONE' ? 'var(--status-done)' : task.status === 'IN_PROGRESS' ? 'var(--status-progress)' : 'var(--status-todo)' }}>
-                                  {task.status}
-                                </span>
-                              </td>
-                              <td>
-                                <span className={`badge badge-${task.priority.toLowerCase()}`}>{task.priority}</span>
-                              </td>
-                              <td>{task.dueDate ? new Date(task.dueDate).toLocaleDateString() : 'No date'}</td>
-                              <td>{new Date(task.createdAt).toLocaleDateString()}</td>
-                              <td>
-                                {task.assignee ? (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                    <div className="assignee-avatar">{task.assignee.name.split(' ').map((n) => n[0]).join('')}</div>
-                                    <span>{task.assignee.name}</span>
-                                  </div>
-                                ) : (
-                                  <span style={{ color: 'var(--text-muted)' }}>Unassigned</span>
-                                )}
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-
-                    <div className="backlog-pagination">
-                      <div>
-                        Showing Page {backlogPage} of {backlogTotalPages || 1} ({backlogTotalTasks} tasks total)
-                      </div>
-                      <div className="pagination-controls">
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setBacklogPage((p) => Math.max(1, p - 1))}
-                          disabled={backlogPage === 1}
-                        >
-                          Prev
-                        </button>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => setBacklogPage((p) => Math.min(backlogTotalPages, p + 1))}
-                          disabled={backlogPage >= backlogTotalPages}
-                        >
-                          Next
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
 
             {/* TAB CONTENT: ACTIVITY FEED */}
             {projectTab === 'activity' && (
@@ -1801,7 +1966,7 @@ export default function App() {
                 <input
                   type="text"
                   className="form-control"
-                  placeholder="Acme Platform Migration"
+                  placeholder="Enter project name..."
                   value={projectForm.name}
                   onChange={(e) => setProjectForm({ ...projectForm, name: e.target.value })}
                 />
@@ -1831,37 +1996,78 @@ export default function App() {
 
       {/* MODAL: INVITE MEMBER */}
       {modals.inviteMember && (
-        <div className="modal-overlay" onClick={() => setModals((m) => ({ ...m, inviteMember: false }))}>
+        <div className="modal-overlay" onClick={() => { setModals((m) => ({ ...m, inviteMember: false })); setGeneratedInviteUrl(null); }}>
           <div className="modal-content glass-panel" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Invite Member to Project</h3>
-              <button className="modal-close-btn" onClick={() => setModals((m) => ({ ...m, inviteMember: false }))}>
+              <button className="modal-close-btn" onClick={() => { setModals((m) => ({ ...m, inviteMember: false })); setGeneratedInviteUrl(null); }}>
                 ✕
               </button>
             </div>
-            <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
-              Enter the email address of a registered user to invite them as a member of this project.
-            </p>
-            <form onSubmit={handleInviteMember}>
-              <div className="form-group">
-                <label className="form-label">Email Address</label>
-                <input
-                  type="email"
-                  className="form-control"
-                  placeholder="member@example.com"
-                  value={inviteForm.email}
-                  onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-                />
-                {inviteFormErrors.email && (
-                  <div className="invalid-feedback">
-                    <AlertCircle size={14} /> {inviteFormErrors.email}
-                  </div>
-                )}
+            {generatedInviteUrl ? (
+              <div style={{ padding: '0.5rem 0' }}>
+                <p style={{ fontSize: '0.95rem', color: 'var(--text-primary)', marginBottom: '1.25rem', lineHeight: '1.5' }}>
+                  <strong>Invitation link generated successfully!</strong> Since the user has not registered an account yet, copy the link below and open it in a new window/tab to simulate signing up as the member.
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem' }}>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={generatedInviteUrl}
+                    readOnly
+                    onClick={(e) => e.target.select()}
+                    style={{ flex: 1, cursor: 'text' }}
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      navigator.clipboard.writeText(generatedInviteUrl);
+                      showToast('info', 'Link copied to clipboard!');
+                    }}
+                  >
+                    Copy
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-block"
+                  onClick={() => {
+                    setModals((m) => ({ ...m, inviteMember: false }));
+                    setGeneratedInviteUrl(null);
+                    fetchProjectDetails(selectedProjectId);
+                  }}
+                >
+                  Done
+                </button>
               </div>
-              <button type="submit" className="btn btn-primary btn-block" disabled={actionLoading}>
-                {actionLoading ? 'Inviting...' : 'Send Invitation'}
-              </button>
-            </form>
+            ) : (
+              <>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
+                  Enter the email address of a registered user to invite them as a member of this project.
+                </p>
+                <form onSubmit={handleInviteMember}>
+                  <div className="form-group">
+                    <label className="form-label">Email Address</label>
+                    <input
+                      type="email"
+                      className="form-control"
+                      placeholder="member@example.com"
+                      value={inviteForm.email}
+                      onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                    />
+                    {inviteFormErrors.email && (
+                      <div className="invalid-feedback">
+                        <AlertCircle size={14} /> {inviteFormErrors.email}
+                      </div>
+                    )}
+                  </div>
+                  <button type="submit" className="btn btn-primary btn-block" disabled={actionLoading}>
+                    {actionLoading ? 'Inviting...' : 'Send Invitation'}
+                  </button>
+                </form>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -1946,10 +2152,10 @@ export default function App() {
                     value={taskForm.assigneeId}
                     onChange={(e) => setTaskForm({ ...taskForm, assigneeId: e.target.value })}
                   >
-                    <option value="">Unassigned</option>
+                    <option value="">All Assignees</option>
                     {selectedProject.members.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.name}
+                        {m.name} ({m.role === 'OWNER' ? 'Owner' : 'Member'})
                       </option>
                     ))}
                   </select>
@@ -2065,10 +2271,10 @@ export default function App() {
                       value={selectedTask.assigneeId || ''}
                       onChange={(e) => setSelectedTask({ ...selectedTask, assigneeId: e.target.value || null })}
                     >
-                      <option value="">Unassigned</option>
+                      <option value="">All Assignees</option>
                       {selectedProject.members.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.name}
+                          {m.name} ({m.role === 'OWNER' ? 'Owner' : 'Member'})
                         </option>
                       ))}
                     </select>

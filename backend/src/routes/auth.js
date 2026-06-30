@@ -58,6 +58,29 @@ router.post('/signup', async (req, res) => {
       },
     });
 
+    // Check for pending invitations
+    const pendingInvites = await prisma.invitation.findMany({
+      where: { email: email.toLowerCase() },
+    });
+
+    if (pendingInvites.length > 0) {
+      for (const invite of pendingInvites) {
+        // Create membership
+        await prisma.membership.create({
+          data: {
+            userId: newUser.id,
+            projectId: invite.projectId,
+            role: invite.role,
+          },
+        });
+      }
+
+      // Clean up processed invitations
+      await prisma.invitation.deleteMany({
+        where: { email: email.toLowerCase() },
+      });
+    }
+
     res.status(201).json({
       message: 'User registered successfully',
       user: {

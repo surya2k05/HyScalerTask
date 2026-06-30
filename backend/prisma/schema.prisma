@@ -30,6 +30,7 @@ model Project {
   memberships  Membership[]
   tasks        Task[]
   activityLogs ActivityLog[]
+  invitations  Invitation[]
 }
 
 model Membership {
@@ -90,4 +91,15 @@ model RefreshToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   expiresAt DateTime
   createdAt DateTime @default(now())
+}
+
+model Invitation {
+  id        String   @id @default(uuid())
+  email     String
+  projectId String
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now())
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([email, projectId])
 }

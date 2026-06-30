@@ -242,6 +242,17 @@ body {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
 }
 
+/* Invert default browser calendar icon inside date inputs to make it white */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+
 .invalid-feedback {
   color: var(--priority-high);
   font-size: 0.8rem;

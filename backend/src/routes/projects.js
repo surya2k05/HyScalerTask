@@ -173,7 +173,45 @@ router.post('/:projectId/invite', requireProjectMembership('OWNER'), async (req,
     });
 
     if (!userToInvite) {
-      return res.status(404).json({ error: 'User not found. They must register first.' });
+      const invitation = await prisma.invitation.upsert({
+        where: {
+          email_projectId: {
+            email: email.toLowerCase().trim(),
+            projectId: projectId,
+          },
+        },
+        update: {},
+        create: {
+          email: email.toLowerCase().trim(),
+          projectId: projectId,
+          role: 'MEMBER',
+        },
+      });
+
+      await logActivity(projectId, req.user.userId, 'INVITED_MEMBER', `Created pending invitation for ${email.toLowerCase().trim()}`);
+
+      const inviteUrl = `http://localhost:5173/signup?invite=${invitation.id}&email=${encodeURIComponent(email.toLowerCase().trim())}`;
+
+      // Retrieve project details for email context
+      const project = await prisma.project.findUnique({
+        where: { id: projectId }
+      });
+
+      // Send email notification asynchronously
+      const { sendInvitationEmail } = require('../utils/email');
+      sendInvitationEmail({
+        toEmail: email.toLowerCase().trim(),
+        projectName: project ? project.name : 'a new board',
+        inviterName: req.user.name || 'A team member',
+        inviteLink: inviteUrl
+      }).catch(err => console.error('[Email Error] Failed background invite send:', err));
+
+      return res.json({
+        message: 'Invitation link generated. The user is not registered yet.',
+        inviteUrl,
+        isNewUser: true,
+        email: email.toLowerCase().trim(),
+      });
     }
 
     // Check if user is already a member
@@ -204,6 +242,21 @@ router.post('/:projectId/invite', requireProjectMembership('OWNER'), async (req,
 
     // Log membership activity
     await logActivity(projectId, req.user.userId, 'INVITED_MEMBER', `Invited ${userToInvite.name} (${userToInvite.email}) to the project`);
+
+    // Retrieve project details for email context
+    const project = await prisma.project.findUnique({
+      where: { id: projectId }
+    });
+
+    // Send email notification to registered user asynchronously
+    const { sendInvitationEmail } = require('../utils/email');
+    sendInvitationEmail({
+      toEmail: userToInvite.email,
+      projectName: project ? project.name : 'a new board',
+      inviterName: req.user.name || 'A team member',
+      inviteLink: `http://localhost:5173/`,
+      isRegistered: true
+    }).catch(err => console.error('[Email Error] Failed background notify send:', err));
 
     // Dynamic broadcast for UI live updates
     const socketServer = require('../sockets/socket');

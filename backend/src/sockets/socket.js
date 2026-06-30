@@ -42,15 +42,26 @@ function initializeSocket(server) {
       if (!projectId) return;
 
       try {
-        // Enforce membership on the socket side before letting them join the room
-        const membership = await prisma.membership.findUnique({
-          where: {
-            userId_projectId: {
-              userId: userId,
-              projectId: projectId,
-            },
-          },
-        });
+        let membership = null;
+        let retries = 3;
+        while (retries > 0) {
+          try {
+            membership = await prisma.membership.findUnique({
+              where: {
+                userId_projectId: {
+                  userId: userId,
+                  projectId: projectId,
+                },
+              },
+            });
+            break; // Success, break retry loop
+          } catch (dbErr) {
+            retries--;
+            console.error(`Socket DB check failed (retries remaining: ${retries}):`, dbErr.message);
+            if (retries === 0) throw dbErr;
+            await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1 second
+          }
+        }
 
         if (membership) {
           socket.join(projectId);
