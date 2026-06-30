@@ -49,6 +49,14 @@ npm run dev
 
 ---
 
+## 💾 Database Details
+
+*   **Database Engine:** PostgreSQL (a highly reliable, production-ready relational database).
+*   **Hosting:** Hosted online using **Neon.tech** (a serverless PostgreSQL platform).
+*   **How the tables were built:** The database tables and schemas were created using **Prisma ORM**. When you run the `npx prisma migrate dev` command, Prisma reads the `schema.prisma` file and automatically builds the tables (User, Membership, Project, Task, Comment, etc.) inside the PostgreSQL database.
+
+---
+
 ## 🔑 Test Login Credentials
 
 The database is pre-seeded with these three users (use password **`Password123`** for all of them):
