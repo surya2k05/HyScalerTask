@@ -18,12 +18,12 @@ npm run install:all
 *(This will install all necessary packages for both the backend and frontend).*
 
 ### Step 2: Set Up Environment Variables
-Create a file named `.env` in the `backend` folder and add your database URL and secret keys:
+Create a file named `.env` in the `backend` folder and add your database URL:
 ```env
 DATABASE_URL="your-postgresql-database-connection-url"
-JWT_ACCESS_SECRET="your-access-secret"
-JWT_REFRESH_SECRET="your-refresh-secret"
 ```
+*   **Database Option (Online/Local):** You can use a local PostgreSQL database or an online serverless database (like **Neon.tech**, which was used during development for zero-config database hosting).
+*   **JWT Secrets (Optional Fallback):** You can also add `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` to this file. If you leave them out, the application automatically uses built-in default secrets so it runs immediately without errors!
 
 ### Step 3: Run Database Migrations
 Run this command to create the database tables:
