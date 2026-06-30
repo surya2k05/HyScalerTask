@@ -57,13 +57,16 @@ npm run dev
 
 ---
 
-## 🔑 Test Login Credentials
+## 🔑 Pre-Seeded Test Data & Credentials
 
-The database is pre-seeded with these three users (use password **`Password123`** for all of them):
+To let you test collaboration and real-time features instantly, the seed script (`npm run seed`) automatically populates the database with:
 
-1.  **Suryakanta Priyadarshi (Owner):** `surya@example.com`
-2.  **Rahul Sharma (Member):** `rahul@example.com`
-3.  **Amit Patel (Member):** `amit@example.com`
+1.  **Three Test Users** (use password **`Password123`** for all of them):
+    *   **Suryakanta Priyadarshi (Project Owner):** `surya@example.com`
+    *   **Rahul Sharma (Project Member):** `rahul@example.com`
+    *   **Amit Patel (Project Member):** `amit@example.com`
+2.  **A Shared Project:** A project named **"Build a Chat App"** is automatically created, with all three users added as members (Surya is the Owner, while Rahul and Amit are Members).
+3.  **Pre-configured Tasks:** Several tasks are already added to the board in different states (To Do, In Progress, Done) and assigned across users so you can see live metrics and test drag-and-drop actions immediately.
 
 ---
 
